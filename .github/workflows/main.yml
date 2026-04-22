@@ -2,11 +2,11 @@ name: Robot Fiscalia Rappi
 
 on:
   schedule:
-    - cron: '0 13 * * *' # Se ejecuta a las 8:00 AM hora Colombia
+    - cron: '0 13 * * *'
   workflow_dispatch: 
 
 permissions:
-  contents: write # 👈 Permite a GitHub guardar el Excel en sí mismo
+  contents: write
 
 jobs:
   ejecutar-robot:
@@ -25,7 +25,7 @@ jobs:
         pip install requests beautifulsoup4 pandas spacy pyarrow openpyxl holidays
         python -m spacy download es_core_news_sm
 
-  - name: Ejecutar Robot
+    - name: Ejecutar Robot
       run: python robot_fiscalia.py
 
     - name: Guardar Excel de regreso en GitHub
