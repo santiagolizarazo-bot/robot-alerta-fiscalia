@@ -2,14 +2,15 @@ name: Robot Fiscalia Rappi
 
 on:
   schedule:
-    # Esto significa: Correr todos los días a las 13:00 UTC (8:00 AM hora Colombia)
-    - cron: '0 13 * * *' 
-  workflow_dispatch: # Este botón nos permite correrlo manualmente cuando queramos
+    - cron: '0 13 * * *' # 8:00 AM Colombia
+  workflow_dispatch: 
+
+permissions:
+  contents: write # 👈 CRUCIAL: Permite que el robot suba archivos al repo
 
 jobs:
   ejecutar-robot:
     runs-on: ubuntu-latest
-
     steps:
     - name: Clonar el repositorio
       uses: actions/checkout@v3
@@ -25,5 +26,12 @@ jobs:
         pip install -r requirements.txt
 
     - name: Ejecutar el script maestro
-      # OJO: Si tu archivo de Python se llama diferente, cámbialo aquí abajo
-      run: python script_maestro.py
+      run: python script_maestro.py # Asegúrate de que el script genere un archivo llamado 'resultados.xlsx'
+
+    - name: Subir resultados al repositorio
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add resultados.xlsx
+        git commit -m "Actualización diaria de hallazgos" || echo "Sin cambios para subir"
+        git push
