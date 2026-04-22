@@ -11,17 +11,17 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # ==========================================
 # ⚙️ CONFIGURACIONES PRINCIPALES
 # ==========================================
-# 1. Tu ID del archivo Parquet en Google Drive
+# 1. Tu ID del archivo Parquet en Google Drive (Es público, así que se baja gratis sin llaves)
 ID_DRIVE = "17YlH0VZrW-j6mseo_411eZYjJVXHrFh2" 
 RUTA_BASE_NUBE = f'https://drive.google.com/uc?id={ID_DRIVE}'
 
-# 2. La URL de tu Webhook en n8n
-URL_N8N = "https://n8n.ops.dev.rappipay.com/webhook/alerta-fiscalia"
+# 2. El nombre del archivo que GitHub va a guardar para n8n
+NOMBRE_EXCEL_SALIDA = "Alerta_Fiscalia.xlsx"
 
 # ==========================================
 # 🧠 PARTE 1: EL MOTOR DE EXTRACCIÓN (SCRAPING)
 # ==========================================
-print("🔥 INICIANDO SÚPER ROBOT: EXTRACCIÓN + CRUCE AUTOMÁTICO 🔥")
+print("🔥 INICIANDO SÚPER ROBOT: GITHUB EDITION 🔥")
 nlp = spacy.load("es_core_news_sm")
 cl = lambda t: unicodedata.normalize('NFKD', str(t)).encode('ASCII', 'ignore').decode('utf-8').upper() if t else ""
 
@@ -179,7 +179,7 @@ def extraer_noticias():
     return pd.DataFrame(datos_extraidos) if datos_extraidos else pd.DataFrame()
 
 # ==========================================
-# 🕵️‍♂️ PARTE 2: EL MOTOR DE CRUCE
+# 🕵️‍♂️ PARTE 2: EL MOTOR DE CRUCE Y GUARDADO
 # ==========================================
 def limpiar_texto(texto):
     if pd.isna(texto): return ""
@@ -202,29 +202,25 @@ def buscar_coincidencia(df_contrapartes, nombre_noticia):
     return df_contrapartes[df_contrapartes["NOMBRE"].apply(coincide_ordenado)]
 
 # ==========================================
-# 🚀 PARTE 3: EJECUCIÓN MAESTRA (REFORZADA)
+# 🚀 PARTE 3: EJECUCIÓN MAESTRA
 # ==========================================
 def ejecutar_pipeline():
     # 1. Extracción (En Memoria)
     df_noticias = extraer_noticias()
     if df_noticias.empty:
         print("\n✅ Proceso Terminado. No se encontraron noticias válidas hoy.")
+        # Generar un Excel vacío para que n8n no falle buscando el archivo
+        pd.DataFrame(columns=['Nombre_Buscado_Noticia', 'Contraparte_Encontrada']).to_excel(NOMBRE_EXCEL_SALIDA, index=False)
         return
 
-    # 2. Descargar Parquet desde Drive (Versión reforzada)
+    # 2. Descargar Parquet desde Drive Público
     print(f"\nIntentando descargar Base de Contrapartes desde Google Drive...")
-    
-    # Ruta temporal donde guardaremos el archivo
     archivo_temporal = "Contrapartes_Temp.parquet"
     
     try:
-        # Usamos una sesión para manejar posibles cookies de seguridad de Google
         session = requests.Session()
-        
-        # Primero hacemos una petición para ver si hay aviso de virus (archivos grandes)
         response = session.get(RUTA_BASE_NUBE, params={'confirm': 't'}, stream=True, verify=False)
         
-        # Si la respuesta es exitosa (200), guardamos el contenido
         if response.status_code == 200:
             with open(archivo_temporal, 'wb') as f:
                 for chunk in response.iter_content(chunk_size=32768):
@@ -235,7 +231,6 @@ def ejecutar_pipeline():
             print(f"❌ Error en la descarga. Código de estado: {response.status_code}")
             return
 
-        # 3. Leer el archivo descargado
         if os.path.exists(archivo_temporal):
             print("Leyendo archivo Parquet...")
             df_base = pd.read_parquet(archivo_temporal)
@@ -248,7 +243,7 @@ def ejecutar_pipeline():
         print(f"❌ Error crítico en el proceso de descarga/lectura: {e}")
         return
 
-    # 4. Cruce de Datos
+    # 3. Cruce de Datos
     hallazgos_totales = []
     print(f"\nIniciando cruce de {len(df_noticias)} nombres extraídos...")
     
@@ -265,30 +260,16 @@ def ejecutar_pipeline():
                     'Contraparte_Encontrada': coincidencia_row["NOMBRE"]
                 })
 
-    # Guardamos resultados si existen
+    # 4. GUARDADO FINAL EN EXCEL (PARA QUE GITHUB O N8N LO TOMEN)
     if hallazgos_totales:
-        pd.DataFrame(hallazgos_totales).to_excel("Cruce_Resultados.xlsx", index=False)
+        pd.DataFrame(hallazgos_totales).to_excel(NOMBRE_EXCEL_SALIDA, index=False)
         print(f"\n[OK] Cruce terminado. Se encontraron {len(hallazgos_totales)} alertas.")
+        print(f"✅ Archivo guardado localmente como: {NOMBRE_EXCEL_SALIDA}")
     else:
+        # Siempre creamos un Excel (así sea vacío con los títulos) para que n8n tenga qué descargar
+        pd.DataFrame(columns=['Nombre_Buscado_Noticia', 'Contraparte_Encontrada']).to_excel(NOMBRE_EXCEL_SALIDA, index=False)
         print("\n[OK] Cruce terminado. Excelente, ninguna contraparte apareció en las noticias.")
-
-    # 5. Envío a n8n
-    datos_para_n8n = {
-        "fecha": pd.Timestamp.now().strftime('%Y-%m-%d'),
-        "alertas_encontradas": len(hallazgos_totales) > 0,
-        "total_alertas": len(hallazgos_totales),
-        "lista_hallazgos": hallazgos_totales
-    }
-
-    try:
-        print("\nEnviando reporte a n8n...")
-        res_n8n = requests.post(URL_N8N, json=datos_para_n8n, verify=False)
-        if res_n8n.status_code == 200:
-            print("🚀 ¡Reporte atrapado por n8n con éxito!")
-        else:
-            print(f"⚠️ n8n respondió con código: {res_n8n.status_code}")
-    except Exception as e:
-        print(f"❌ No se pudo conectar con n8n: {e}")
+        print(f"✅ Archivo vacío guardado localmente como: {NOMBRE_EXCEL_SALIDA}")
         
     # Limpieza final
     if os.path.exists(archivo_temporal):
