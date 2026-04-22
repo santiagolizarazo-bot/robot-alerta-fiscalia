@@ -25,9 +25,8 @@ jobs:
         pip install requests beautifulsoup4 pandas spacy pyarrow openpyxl holidays
         python -m spacy download es_core_news_sm
 
-    - name: Ejecutar Robot
-      # OJO: Si tu archivo tiene espacios en el nombre, debe ir entre comillas
-      run: python "FISCALIA DEFINITIVA.py" 
+  - name: Ejecutar Robot
+      run: python robot_fiscalia.py
 
     - name: Guardar Excel de regreso en GitHub
       run: |
