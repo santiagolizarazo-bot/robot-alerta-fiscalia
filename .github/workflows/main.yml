@@ -2,17 +2,17 @@ name: Robot Fiscalia Rappi
 
 on:
   schedule:
-    - cron: '0 13 * * *' # 8:00 AM Colombia
+    - cron: '0 13 * * *' # Se ejecuta a las 8:00 AM hora Colombia
   workflow_dispatch: 
 
 permissions:
-  contents: write # 👈 CRUCIAL: Permite que el robot suba archivos al repo
+  contents: write # 👈 Permite a GitHub guardar el Excel en sí mismo
 
 jobs:
   ejecutar-robot:
     runs-on: ubuntu-latest
     steps:
-    - name: Clonar el repositorio
+    - name: Clonar repositorio
       uses: actions/checkout@v3
 
     - name: Configurar Python
@@ -20,18 +20,18 @@ jobs:
       with:
         python-version: '3.10'
 
-    - name: Instalar dependencias
+    - name: Instalar librerías
       run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
+        pip install requests beautifulsoup4 pandas spacy pyarrow openpyxl holidays
+        python -m spacy download es_core_news_sm
 
-    - name: Ejecutar el script maestro
-      run: python script_maestro.py # Asegúrate de que el script genere un archivo llamado 'resultados.xlsx'
+    - name: Ejecutar Robot
+      run: python FISCALIA_DEFINITIVA.py
 
-    - name: Subir resultados al repositorio
+    - name: Guardar Excel de regreso en GitHub
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
-        git add resultados.xlsx
-        git commit -m "Actualización diaria de hallazgos" || echo "Sin cambios para subir"
+        git add Alerta_Fiscalia.xlsx
+        git commit -m "🤖 Actualización diaria de alertas" || echo "No hay cambios para subir"
         git push
