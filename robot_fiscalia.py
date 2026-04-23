@@ -11,11 +11,8 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # ==========================================
 # ⚙️ CONFIGURACIONES PRINCIPALES
 # ==========================================
-# 1. Tu ID del archivo Parquet en Google Drive (Es público, así que se baja gratis sin llaves)
 ID_DRIVE = "17YlH0VZrW-j6mseo_411eZYjJVXHrFh2" 
 RUTA_BASE_NUBE = f'https://drive.google.com/uc?id={ID_DRIVE}'
-
-# 2. El nombre del archivo que GitHub va a guardar para n8n
 NOMBRE_EXCEL_SALIDA = "Alerta_Fiscalia.xlsx"
 
 # ==========================================
@@ -64,7 +61,9 @@ prohibidas = [
     "estas", "aquel", "porque", "cuando", "donde", "quien", "quienes", "enero", "febrero", 
     "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", 
     "diciembre", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo", 
-    "mes", "meses", "dia", "dias", "hora", "horas"
+    "mes", "meses", "dia", "dias", "hora", "horas",
+    "costa rica", "moneda", "falsa", "falso", "charco", "azul", "almendra", "madre", "padre",
+    "pondaje", "hato", "corozal", "falsificacion", "billetes", "dolares", "pesos"
 ]
 
 def analizar_noticia(txt):
@@ -169,7 +168,7 @@ def extraer_noticias():
                     pers, dels = analizar_noticia(txt)
                     
                     if pers:
-                        for p in pers: datos_extraidos.append({'FECHA': cl(fecha.strftime('%Y-%m-%d')), 'NOMBRE': cl(p), 'DELITO': dels})
+                        for p in pers: datos_extraidos.append({'FECHA': cl(fecha.strftime('%Y-%m-%d')), 'NOMBRE': cl(p), 'DELITO': dels, 'URL_NOTICIA': l})
                         print(f" -> ¡EXTRAÍDO! ({f_str}): {', '.join([cl(p) for p in pers])}")
                 except Exception: pass
             pag += 1
@@ -205,15 +204,14 @@ def buscar_coincidencia(df_contrapartes, nombre_noticia):
 # 🚀 PARTE 3: EJECUCIÓN MAESTRA
 # ==========================================
 def ejecutar_pipeline():
-    # 1. Extracción (En Memoria)
+    columnas_finales = ['NROID', 'NIVEL DE ALERTA', 'CONTRAPARTE (BD)', 'ACUSADO (NOTICIA)', '% DE COINCIDENCIA', 'FECHA', 'DELITO', 'URL_NOTICIA']
+    
     df_noticias = extraer_noticias()
     if df_noticias.empty:
         print("\n✅ Proceso Terminado. No se encontraron noticias válidas hoy.")
-        # Generar un Excel vacío para que n8n no falle buscando el archivo
-        pd.DataFrame(columns=['Nombre_Buscado_Noticia', 'Contraparte_Encontrada']).to_excel(NOMBRE_EXCEL_SALIDA, index=False)
+        pd.DataFrame(columns=columnas_finales).to_excel(NOMBRE_EXCEL_SALIDA, index=False)
         return
 
-    # 2. Descargar Parquet desde Drive Público
     print(f"\nIntentando descargar Base de Contrapartes desde Google Drive...")
     archivo_temporal = "Contrapartes_Temp.parquet"
     
@@ -243,7 +241,6 @@ def ejecutar_pipeline():
         print(f"❌ Error crítico en el proceso de descarga/lectura: {e}")
         return
 
-    # 3. Cruce de Datos
     hallazgos_totales = []
     print(f"\nIniciando cruce de {len(df_noticias)} nombres extraídos...")
     
@@ -255,23 +252,59 @@ def ejecutar_pipeline():
         if not coincidencias.empty:
             print(f"  [!] ALERTA ROJA: {len(coincidencias)} posibles contrapartes encontradas.")
             for _, coincidencia_row in coincidencias.iterrows():
+                
+                palabras_n = nombre_buscar.split()
+                palabras_c = str(coincidencia_row["NOMBRE"]).split()
+                max_len = max(len(palabras_n), len(palabras_c))
+                min_len = min(len(palabras_n), len(palabras_c))
+                
+                # ⚠️ Porcentaje numérico puro (Para ordenar correctamente)
+                porcentaje_raw = (min_len / max_len) * 100 if max_len > 0 else 0
+                porcentaje_calc = f"{round(porcentaje_raw, 2)}%"
+                
+                nroid_extraido = coincidencia_row["NROID"] if "NROID" in coincidencia_row else "NO DISPONIBLE"
+
+                # 🚨 MATRIZ DE RIESGO
+                if min_len >= 4:
+                    nivel_alerta = "🔴 ALERTA CRÍTICA (4+ Palabras)"
+                elif min_len == 3:
+                    nivel_alerta = "🟠 ALERTA MEDIA (3 Palabras)"
+                elif min_len == 2:
+                    nivel_alerta = "🟡 ALERTA BAJA (2 Palabras)"
+                else:
+                    nivel_alerta = "⚪ DESCARTADO (1 Palabra)"
+
                 hallazgos_totales.append({
-                    'Nombre_Buscado_Noticia': nombre_buscar,
-                    'Contraparte_Encontrada': coincidencia_row["NOMBRE"]
+                    'NROID': nroid_extraido,
+                    'NIVEL DE ALERTA': nivel_alerta,             
+                    'CONTRAPARTE (BD)': coincidencia_row["NOMBRE"],
+                    'ACUSADO (NOTICIA)': nombre_buscar,
+                    '% DE COINCIDENCIA': porcentaje_calc,
+                    'FECHA': row.get("FECHA", ""),
+                    'DELITO': row.get("DELITO", ""),
+                    'URL_NOTICIA': row.get("URL_NOTICIA", ""),
+                    '_sort_pct': porcentaje_raw,                 # Llave oculta para porcentaje (Mayor a menor)
+                    '_sort_key': min_len                         # Segunda llave para desempatar por gravedad
                 })
 
-    # 4. GUARDADO FINAL EN EXCEL (PARA QUE GITHUB O N8N LO TOMEN)
+    # 4. GUARDADO Y ORDENAMIENTO EN EXCEL
     if hallazgos_totales:
-        pd.DataFrame(hallazgos_totales).to_excel(NOMBRE_EXCEL_SALIDA, index=False)
+        df_final = pd.DataFrame(hallazgos_totales)
+        
+        # ⚠️ Ordenamos PRIMERO por el Porcentaje exacto y SEGUNDO por el Nivel de gravedad
+        df_final = df_final.sort_values(by=['_sort_pct', '_sort_key'], ascending=[False, False])
+        df_final = df_final.drop(columns=['_sort_key', '_sort_pct'])
+        
+        df_final = df_final[columnas_finales]
+        
+        df_final.to_excel(NOMBRE_EXCEL_SALIDA, index=False)
         print(f"\n[OK] Cruce terminado. Se encontraron {len(hallazgos_totales)} alertas.")
-        print(f"✅ Archivo guardado localmente como: {NOMBRE_EXCEL_SALIDA}")
+        print(f"✅ Archivo organizado por % DE COINCIDENCIA guardado localmente como: {NOMBRE_EXCEL_SALIDA}")
     else:
-        # Siempre creamos un Excel (así sea vacío con los títulos) para que n8n tenga qué descargar
-        pd.DataFrame(columns=['Nombre_Buscado_Noticia', 'Contraparte_Encontrada']).to_excel(NOMBRE_EXCEL_SALIDA, index=False)
+        pd.DataFrame(columns=columnas_finales).to_excel(NOMBRE_EXCEL_SALIDA, index=False)
         print("\n[OK] Cruce terminado. Excelente, ninguna contraparte apareció en las noticias.")
         print(f"✅ Archivo vacío guardado localmente como: {NOMBRE_EXCEL_SALIDA}")
         
-    # Limpieza final
     if os.path.exists(archivo_temporal):
         try:
             os.remove(archivo_temporal)
