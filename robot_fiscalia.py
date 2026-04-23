@@ -128,17 +128,28 @@ def analizar_noticia(txt):
     return {p for p in pers_finales if len(p.split()) >= 2}, cl(", ".join(d.strip() for d in dels)) if dels else "DELITO NO ESPECIFICADO"
 
 def extraer_noticias():
-    hoy = datetime.utcnow() - timedelta(hours=5)  # 🇨🇴 Reloj forzado a hora Colombia
+    # 🕒 CORRECCIÓN DE RELOJ: Forzamos matemáticamente la hora de Colombia (UTC - 5)
+    # Sin importar dónde esté alojado GitHub, el robot sabrá la fecha exacta de Bogotá.
+    hoy = datetime.utcnow() - timedelta(hours=5)
+    
+    print("=======================================")
+    print(f"🕒 HORA COLOMBIA (Calculada por el robot): {hoy.strftime('%Y-%m-%d %H:%M:%S')}")
+    print("=======================================")
+
     festivos_colombia = holidays.Colombia(years=hoy.year)
     dias_atras = 1
     fecha_revisar = hoy - timedelta(days=dias_atras)
+    
     while fecha_revisar.weekday() >= 5 or fecha_revisar in festivos_colombia:
         dias_atras += 1 
         fecha_revisar = hoy - timedelta(days=dias_atras)
 
     lim_inf = fecha_revisar.replace(hour=0, minute=0, second=0, microsecond=0)
     lim_sup = hoy.replace(hour=0, minute=0, second=0, microsecond=0)
-    print(f"Buscando estrictamente noticias desde el: {lim_inf.strftime('%Y-%m-%d')} hasta Hoy\n")
+    
+    print(f"📅 RANGO DE BÚSQUEDA ASIGNADO:")
+    print(f"   -> Desde: {lim_inf.strftime('%Y-%m-%d 00:00:00')}")
+    print(f"   -> Hasta: {lim_sup.strftime('%Y-%m-%d 00:00:00')} (Excluye noticias de hoy en la madrugada)\n")
 
     sesion = requests.Session()
     sesion.headers.update({'User-Agent': 'Mozilla/5.0'})
@@ -258,7 +269,6 @@ def ejecutar_pipeline():
                 max_len = max(len(palabras_n), len(palabras_c))
                 min_len = min(len(palabras_n), len(palabras_c))
                 
-                # ⚠️ Porcentaje numérico puro (Para ordenar correctamente)
                 porcentaje_raw = (min_len / max_len) * 100 if max_len > 0 else 0
                 porcentaje_calc = f"{round(porcentaje_raw, 2)}%"
                 
@@ -283,18 +293,15 @@ def ejecutar_pipeline():
                     'FECHA': row.get("FECHA", ""),
                     'DELITO': row.get("DELITO", ""),
                     'URL_NOTICIA': row.get("URL_NOTICIA", ""),
-                    '_sort_pct': porcentaje_raw,                 # Llave oculta para porcentaje (Mayor a menor)
-                    '_sort_key': min_len                         # Segunda llave para desempatar por gravedad
+                    '_sort_pct': porcentaje_raw,
+                    '_sort_key': min_len                         
                 })
 
     # 4. GUARDADO Y ORDENAMIENTO EN EXCEL
     if hallazgos_totales:
         df_final = pd.DataFrame(hallazgos_totales)
-        
-        # ⚠️ Ordenamos PRIMERO por el Porcentaje exacto y SEGUNDO por el Nivel de gravedad
         df_final = df_final.sort_values(by=['_sort_pct', '_sort_key'], ascending=[False, False])
         df_final = df_final.drop(columns=['_sort_key', '_sort_pct'])
-        
         df_final = df_final[columnas_finales]
         
         df_final.to_excel(NOMBRE_EXCEL_SALIDA, index=False)
