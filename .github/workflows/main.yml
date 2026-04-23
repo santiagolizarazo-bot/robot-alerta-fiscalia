@@ -1,37 +1,38 @@
-name: Robot Fiscalia Rappi
+name: Ejecución Automática Alertas
 
 on:
   schedule:
+    # 13:00 UTC = 8:00 AM Hora Colombia
     - cron: '0 13 * * *'
-  workflow_dispatch: 
-
-permissions:
-  contents: write
+  workflow_dispatch: # Permite darle Play manualmente
 
 jobs:
-  ejecutar-robot:
+  run-bot:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # ⚠️ CRÍTICO: Da permiso para guardar el Excel
+
     steps:
-    - name: Clonar repositorio
-      uses: actions/checkout@v3
+      - name: Descargar el repositorio
+        uses: actions/checkout@v3
 
-    - name: Configurar Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
+      - name: Configurar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
 
-    - name: Instalar librerías
-      run: |
-        pip install requests beautifulsoup4 pandas spacy pyarrow openpyxl holidays
-        python -m spacy download es_core_news_sm
+      - name: Instalar dependencias
+        run: |
+          pip install -r requirements.txt
+          python -m spacy download es_core_news_sm
 
-    - name: Ejecutar Robot
-      run: python robot_fiscalia.py
+      - name: Ejecutar el Robot
+        run: python robot_fiscalia.py
 
-    - name: Guardar Excel de regreso en GitHub
-      run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        git add Alerta_Fiscalia.xlsx
-        git commit -m "🤖 Actualización diaria de alertas" || echo "No hay cambios para subir"
-        git push
+      - name: Guardar el nuevo Excel en GitHub
+        run: |
+          git config --global user.name "Robot Fiscalia"
+          git config --global user.email "bot@ejemplo.com"
+          git add Alerta_Fiscalia.xlsx
+          # Solo guarda si hay cambios
+          git diff --quiet && git diff --staged --quiet || (git commit -m "🤖 Actualización diaria de alertas" && git push)
