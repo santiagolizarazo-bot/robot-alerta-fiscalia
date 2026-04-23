@@ -128,7 +128,7 @@ def analizar_noticia(txt):
     return {p for p in pers_finales if len(p.split()) >= 2}, cl(", ".join(d.strip() for d in dels)) if dels else "DELITO NO ESPECIFICADO"
 
 def extraer_noticias():
-    hoy = datetime.now()
+    hoy = datetime.utcnow() - timedelta(hours=5)  # 🇨🇴 Reloj forzado a hora Colombia
     festivos_colombia = holidays.Colombia(years=hoy.year)
     dias_atras = 1
     fecha_revisar = hoy - timedelta(days=dias_atras)
