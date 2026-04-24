@@ -10,7 +10,6 @@ on:
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-    # ESTO ES VITAL: Si no tiene permisos de escritura, no guarda el Excel
     permissions:
       contents: write
 
