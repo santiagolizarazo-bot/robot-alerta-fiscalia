@@ -2,15 +2,15 @@ name: Ejecución Automática Alertas
 
 on:
   schedule:
-    # 13:00 UTC = 8:00 AM Hora Colombia
-    - cron: '0 13 * * *'
-  workflow_dispatch: # Permite darle Play manualmente
+    # 12:47 UTC = 07:47 AM Hora Colombia (Minuto impar para evitar tráfico en GitHub)
+    - cron: '47 12 * * *'
+  workflow_dispatch:
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # ⚠️ CRÍTICO: Da permiso para guardar el Excel
+      contents: write 
 
     steps:
       - name: Descargar el repositorio
@@ -23,7 +23,7 @@ jobs:
 
       - name: Instalar dependencias
         run: |
-          pip install -r requirements.txt
+          pip install requests beautifulsoup4 pandas spacy holidays urllib3 fastparquet
           python -m spacy download es_core_news_sm
 
       - name: Ejecutar el Robot
@@ -34,5 +34,5 @@ jobs:
           git config --global user.name "Robot Fiscalia"
           git config --global user.email "bot@ejemplo.com"
           git add Alerta_Fiscalia.xlsx
-          # Solo guarda si hay cambios
-          git diff --quiet && git diff --staged --quiet || (git commit -m "🤖 Actualización diaria de alertas" && git push)
+          # Solo guarda si el archivo realmente cambió
+          git diff --quiet && git diff --staged --quiet || (git commit -m "🤖 Actualización automática de alertas" && git push)
