@@ -2,37 +2,39 @@ name: Ejecución Automática Alertas
 
 on:
   schedule:
-    # 12:47 UTC = 07:47 AM Hora Colombia (Minuto impar para evitar tráfico en GitHub)
-    - cron: '47 12 * * *'
-  workflow_dispatch:
+    # 10:00 UTC es 5:00 AM en Colombia. 
+    # GitHub tendrá 3 horas de margen para cualquier retraso.
+    - cron: '0 10 * * *'
+  workflow_dispatch: # Mantiene el botón manual por si acaso
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
+    # ESTO ES VITAL: Si no tiene permisos de escritura, no guarda el Excel
     permissions:
-      contents: write 
+      contents: write
 
     steps:
-      - name: Descargar el repositorio
+      - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Configurar Python
+      - name: Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
-      - name: Instalar dependencias
+      - name: Deps
         run: |
-          pip install requests beautifulsoup4 pandas spacy holidays urllib3 fastparquet
+          pip install -r requirements.txt
           python -m spacy download es_core_news_sm
 
-      - name: Ejecutar el Robot
+      - name: Run
         run: python robot_fiscalia.py
 
-      - name: Guardar el nuevo Excel en GitHub
+      - name: Save
         run: |
-          git config --global user.name "Robot Fiscalia"
-          git config --global user.email "bot@ejemplo.com"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add Alerta_Fiscalia.xlsx
-          # Solo guarda si el archivo realmente cambió
-          git diff --quiet && git diff --staged --quiet || (git commit -m "🤖 Actualización automática de alertas" && git push)
+          git commit -m "🤖 Alerta diaria automática" || echo "Sin cambios"
+          git push
