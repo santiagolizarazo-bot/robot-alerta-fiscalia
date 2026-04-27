@@ -16,9 +16,24 @@ RUTA_BASE_NUBE = f'https://drive.google.com/uc?id={ID_DRIVE}'
 NOMBRE_EXCEL_SALIDA = "Alerta_Fiscalia.xlsx"
 
 # ==========================================
+# 🛑 DICCIONARIO UIAF: DELITOS FUENTE DE LA/FT
+# ==========================================
+DELITOS_LAFT = [
+    "trafico de migrantes", "trata de personas", "extorsion", "enriquecimiento ilicito",
+    "secuestro", "rebelion", "trafico de armas", "porte de armas", "financiacion del terrorismo",
+    "terrorismo", "narcotrafico", "estupefacientes", "sicotropicas", "sistema financiero",
+    "administracion publica", "contrabando", "fraude aduanero", "concierto para delinquir",
+    "lavado de activos", "testaferrato", "explotacion sexual", "prostitucion", "peculado",
+    "omision del agente retenedor", "fraude a subvenciones", "concusion", "cohecho",
+    "celebracion de contratos", "acuerdos restrictivos", "trafico de influencias",
+    "prevaricato", "abuso de autoridad", "usurpacion de funciones", "soborno transnacional",
+    "evasion tributaria", "defraudacion", "hidrocarburos", "captacion masiva", "droga"
+]
+
+# ==========================================
 # 🧠 PARTE 1: EL MOTOR DE EXTRACCIÓN (SCRAPING)
 # ==========================================
-print("🔥 INICIANDO SÚPER ROBOT: GITHUB EDITION 🔥")
+print("🔥 INICIANDO SÚPER ROBOT 🔥")
 nlp = spacy.load("es_core_news_sm")
 cl = lambda t: unicodedata.normalize('NFKD', str(t)).encode('ASCII', 'ignore').decode('utf-8').upper() if t else ""
 
@@ -63,10 +78,21 @@ prohibidas = [
     "diciembre", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo", 
     "mes", "meses", "dia", "dias", "hora", "horas",
     "costa rica", "moneda", "falsa", "falso", "charco", "azul", "almendra", "madre", "padre",
-    "pondaje", "hato", "corozal", "falsificacion", "billetes", "dolares", "pesos"
+    "pondaje", "hato", "corozal", "falsificacion", "billetes", "dolares", "pesos",
+    
+    # --- NUEVOS FILTROS DE BASURA INSTITUCIONAL ---
+    "derechos", "humanos", "tribunal", "superior"
 ]
 
 def analizar_noticia(txt):
+    txt_limpio_busqueda = cl(txt).lower()
+    delitos_detectados = [d.upper() for d in DELITOS_LAFT if d in txt_limpio_busqueda]
+    
+    if not delitos_detectados:
+        return set(), ""
+        
+    dels_final = ", ".join(delitos_detectados)
+
     ents = []
     txt = re.sub(r"(?i)\balias\s+['\"‘“]?(?:[A-ZÁÉÍÓÚÑ0-9][^\s,.;:()]*|el|la|los|las|o|y|del?)(?:\s+(?:[A-ZÁÉÍÓÚÑ0-9][^\s,.;:()]*|el|la|los|las|o|y|del?)){0,4}['\"’”]?", " ", txt)
     
@@ -124,32 +150,20 @@ def analizar_noticia(txt):
             if palabras_p1.issubset(palabras_en_otros): es_frankenstein = True
         if not es_version_corta and not es_frankenstein: pers_finales.add(p1)
 
-    dels = re.findall(r"(?:(?:el\s+|los\s+)?delito[s]?(?:\s+de)?|presunta\s+participaci[oó]n(?:\s+en)?|responsable\s+de)\s+([^\.]+)", txt, re.I)
-    return {p for p in pers_finales if len(p.split()) >= 2}, cl(", ".join(d.strip() for d in dels)) if dels else "DELITO NO ESPECIFICADO"
+    return {p for p in pers_finales if len(p.split()) >= 2}, dels_final
 
 def extraer_noticias():
-    # 🕒 CORRECCIÓN DE RELOJ: Forzamos matemáticamente la hora de Colombia (UTC - 5)
-    # Sin importar dónde esté alojado GitHub, el robot sabrá la fecha exacta de Bogotá.
-    hoy = datetime.utcnow() - timedelta(hours=5)
-    
-    print("=======================================")
-    print(f"🕒 HORA COLOMBIA (Calculada por el robot): {hoy.strftime('%Y-%m-%d %H:%M:%S')}")
-    print("=======================================")
-
+    hoy = datetime.now()
     festivos_colombia = holidays.Colombia(years=hoy.year)
     dias_atras = 1
     fecha_revisar = hoy - timedelta(days=dias_atras)
-    
     while fecha_revisar.weekday() >= 5 or fecha_revisar in festivos_colombia:
         dias_atras += 1 
         fecha_revisar = hoy - timedelta(days=dias_atras)
 
     lim_inf = fecha_revisar.replace(hour=0, minute=0, second=0, microsecond=0)
     lim_sup = hoy.replace(hour=0, minute=0, second=0, microsecond=0)
-    
-    print(f"📅 RANGO DE BÚSQUEDA ASIGNADO:")
-    print(f"   -> Desde: {lim_inf.strftime('%Y-%m-%d 00:00:00')}")
-    print(f"   -> Hasta: {lim_sup.strftime('%Y-%m-%d 00:00:00')} (Excluye noticias de hoy en la madrugada)\n")
+    print(f"Buscando estrictamente noticias desde el: {lim_inf.strftime('%Y-%m-%d')} hasta Hoy\n")
 
     sesion = requests.Session()
     sesion.headers.update({'User-Agent': 'Mozilla/5.0'})
@@ -180,7 +194,7 @@ def extraer_noticias():
                     
                     if pers:
                         for p in pers: datos_extraidos.append({'FECHA': cl(fecha.strftime('%Y-%m-%d')), 'NOMBRE': cl(p), 'DELITO': dels, 'URL_NOTICIA': l})
-                        print(f" -> ¡EXTRAÍDO! ({f_str}): {', '.join([cl(p) for p in pers])}")
+                        print(f" -> ¡FILTRO UIAF APROBADO! Extraído ({f_str}): {', '.join([cl(p) for p in pers])} | Delitos: {dels}")
                 except Exception: pass
             pag += 1
         except Exception as e: 
@@ -189,27 +203,26 @@ def extraer_noticias():
     return pd.DataFrame(datos_extraidos) if datos_extraidos else pd.DataFrame()
 
 # ==========================================
-# 🕵️‍♂️ PARTE 2: EL MOTOR DE CRUCE Y GUARDADO
+# 🕵️‍♂️ PARTE 2: EL MOTOR DE CRUCE Y GUARDADO (OPTIMIZADO)
 # ==========================================
 def limpiar_texto(texto):
     if pd.isna(texto): return ""
     t = str(texto).upper().strip()
     return re.sub(r"[^A-Z0-9\s]", "", "".join(c for c in unicodedata.normalize("NFD", t) if unicodedata.category(c) != "Mn"))
 
-def buscar_coincidencia(df_contrapartes, nombre_noticia):
+def buscar_coincidencia_rapida(df_contrapartes, nombre_noticia):
     palabras_noticia = limpiar_texto(nombre_noticia).split() 
     if len(palabras_noticia) < 2: return pd.DataFrame() 
 
-    def coincide_ordenado(nombre_db):
-        if pd.isna(nombre_db): return False
-        palabras_db = str(nombre_db).split()
+    # ⚡ Esta es la nueva lógica Turbo que lee la columna pre-separada
+    def coincide(palabras_db):
         if len(palabras_db) < 2: return False
-        
         corta, larga = (palabras_noticia, palabras_db) if len(palabras_noticia) <= len(palabras_db) else (palabras_db, palabras_noticia)
-        iterador = iter(larga)
-        return all(palabra in iterador for palabra in corta)
+        return all(palabra in larga for palabra in corta)
 
-    return df_contrapartes[df_contrapartes["NOMBRE"].apply(coincide_ordenado)]
+    # Solo aplicamos la máscara a la columna ya dividida
+    mask = df_contrapartes['PALABRAS_LISTA'].apply(coincide)
+    return df_contrapartes[mask]
 
 # ==========================================
 # 🚀 PARTE 3: EJECUCIÓN MAESTRA
@@ -219,8 +232,11 @@ def ejecutar_pipeline():
     
     df_noticias = extraer_noticias()
     if df_noticias.empty:
-        print("\n✅ Proceso Terminado. No se encontraron noticias válidas hoy.")
-        pd.DataFrame(columns=columnas_finales).to_excel(NOMBRE_EXCEL_SALIDA, index=False)
+        print("\n✅ Proceso Terminado. No se encontraron noticias de delitos fuente LA/FT hoy.")
+        try:
+            pd.DataFrame(columns=columnas_finales).to_excel(NOMBRE_EXCEL_SALIDA, index=False)
+        except PermissionError:
+            print(f"\n❌ ERROR: ¡Tienes el archivo '{NOMBRE_EXCEL_SALIDA}' abierto! Ciérralo.")
         return
 
     print(f"\nIntentando descargar Base de Contrapartes desde Google Drive...")
@@ -241,9 +257,11 @@ def ejecutar_pipeline():
             return
 
         if os.path.exists(archivo_temporal):
-            print("Leyendo archivo Parquet...")
+            print("Leyendo y optimizando archivo Parquet para velocidad Turbo...")
             df_base = pd.read_parquet(archivo_temporal)
             df_base["NOMBRE"] = df_base["NOMBRE"].astype(str).apply(limpiar_texto)
+            # ⚡ Creamos la columna pre-dividida UNA SOLA VEZ para no sobrecargar el PC
+            df_base["PALABRAS_LISTA"] = df_base["NOMBRE"].str.split()
         else:
             print("❌ El archivo no se encontró en el disco después de la descarga.")
             return
@@ -253,19 +271,19 @@ def ejecutar_pipeline():
         return
 
     hallazgos_totales = []
-    print(f"\nIniciando cruce de {len(df_noticias)} nombres extraídos...")
+    print(f"\nIniciando cruce ultra-rápido de {len(df_noticias)} nombres extraídos...")
     
     for index, row in df_noticias.iterrows():
         nombre_buscar = str(row["NOMBRE"]).strip()
         print(f"Buscando: {nombre_buscar}...")
-        coincidencias = buscar_coincidencia(df_base, nombre_buscar)
+        coincidencias = buscar_coincidencia_rapida(df_base, nombre_buscar)
         
         if not coincidencias.empty:
             print(f"  [!] ALERTA ROJA: {len(coincidencias)} posibles contrapartes encontradas.")
             for _, coincidencia_row in coincidencias.iterrows():
                 
                 palabras_n = nombre_buscar.split()
-                palabras_c = str(coincidencia_row["NOMBRE"]).split()
+                palabras_c = coincidencia_row["PALABRAS_LISTA"]
                 max_len = max(len(palabras_n), len(palabras_c))
                 min_len = min(len(palabras_n), len(palabras_c))
                 
@@ -274,7 +292,6 @@ def ejecutar_pipeline():
                 
                 nroid_extraido = coincidencia_row["NROID"] if "NROID" in coincidencia_row else "NO DISPONIBLE"
 
-                # 🚨 MATRIZ DE RIESGO
                 if min_len >= 4:
                     nivel_alerta = "🔴 ALERTA CRÍTICA (4+ Palabras)"
                 elif min_len == 3:
@@ -293,25 +310,30 @@ def ejecutar_pipeline():
                     'FECHA': row.get("FECHA", ""),
                     'DELITO': row.get("DELITO", ""),
                     'URL_NOTICIA': row.get("URL_NOTICIA", ""),
-                    '_sort_pct': porcentaje_raw,
+                    '_sort_pct': porcentaje_raw,                 
                     '_sort_key': min_len                         
                 })
 
-    # 4. GUARDADO Y ORDENAMIENTO EN EXCEL
     if hallazgos_totales:
         df_final = pd.DataFrame(hallazgos_totales)
         df_final = df_final.sort_values(by=['_sort_pct', '_sort_key'], ascending=[False, False])
         df_final = df_final.drop(columns=['_sort_key', '_sort_pct'])
         df_final = df_final[columnas_finales]
         
-        df_final.to_excel(NOMBRE_EXCEL_SALIDA, index=False)
-        print(f"\n[OK] Cruce terminado. Se encontraron {len(hallazgos_totales)} alertas.")
-        print(f"✅ Archivo organizado por % DE COINCIDENCIA guardado localmente como: {NOMBRE_EXCEL_SALIDA}")
+        try:
+            df_final.to_excel(NOMBRE_EXCEL_SALIDA, index=False)
+            print(f"\n[OK] Cruce terminado. Se encontraron {len(hallazgos_totales)} alertas.")
+            print(f"✅ Archivo guardado localmente como: {NOMBRE_EXCEL_SALIDA}")
+        except PermissionError:
+            print(f"\n❌ ERROR: ¡Tienes el archivo '{NOMBRE_EXCEL_SALIDA}' abierto! Ciérralo.")
     else:
-        pd.DataFrame(columns=columnas_finales).to_excel(NOMBRE_EXCEL_SALIDA, index=False)
-        print("\n[OK] Cruce terminado. Excelente, ninguna contraparte apareció en las noticias.")
-        print(f"✅ Archivo vacío guardado localmente como: {NOMBRE_EXCEL_SALIDA}")
-        
+        try:
+            pd.DataFrame(columns=columnas_finales).to_excel(NOMBRE_EXCEL_SALIDA, index=False)
+            print("\n[OK] Cruce terminado. Excelente, ninguna contraparte apareció en las noticias.")
+            print(f"✅ Archivo vacío guardado localmente como: {NOMBRE_EXCEL_SALIDA}")
+        except PermissionError:
+            print(f"\n❌ ERROR: ¡Tienes el archivo '{NOMBRE_EXCEL_SALIDA}' abierto! Ciérralo.")
+            
     if os.path.exists(archivo_temporal):
         try:
             os.remove(archivo_temporal)
