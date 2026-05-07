@@ -11,8 +11,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # ==========================================
 # ⚙️ CONFIGURACIONES PRINCIPALES
 # ==========================================
-ID_DRIVE = "17YlH0VZrW-j6mseo_411eZYjJVXHrFh2" 
-RUTA_BASE_NUBE = f'https://drive.google.com/uc?id={ID_DRIVE}'
+ID_DRIVE = "1ImDGv9bO-5cg6LjpAIP-kkRKzkuglI9B" 
 NOMBRE_EXCEL_SALIDA = "Alerta_Fiscalia.xlsx"
 
 # ==========================================
@@ -33,7 +32,7 @@ DELITOS_LAFT = [
 # ==========================================
 # 🧠 PARTE 1: EL MOTOR DE EXTRACCIÓN (SCRAPING)
 # ==========================================
-print("🔥 INICIANDO SÚPER ROBOT 🔥")
+print("🔥 INICIANDO SÚPER ROBOT: GITHUB EDITION (MODO TURBO + FILTRO UIAF) 🔥")
 nlp = spacy.load("es_core_news_sm")
 cl = lambda t: unicodedata.normalize('NFKD', str(t)).encode('ASCII', 'ignore').decode('utf-8').upper() if t else ""
 
@@ -79,9 +78,12 @@ prohibidas = [
     "mes", "meses", "dia", "dias", "hora", "horas",
     "costa rica", "moneda", "falsa", "falso", "charco", "azul", "almendra", "madre", "padre",
     "pondaje", "hato", "corozal", "falsificacion", "billetes", "dolares", "pesos",
+    "derechos", "humanos", "tribunal", "superior",
     
-    # --- NUEVOS FILTROS DE BASURA INSTITUCIONAL ---
-    "derechos", "humanos", "tribunal", "superior"
+    # --- NUEVOS FILTROS MAYO 2026 ---
+    "movil", "turquia", "identificacion", "preliminar", "homologada", 
+    "detencion", "domiciliaria", "callejon", "manhattan", "bugalagrande", 
+    "zarzal", "liberacion", "nacional", "la mesa"
 ]
 
 def analizar_noticia(txt):
@@ -203,7 +205,7 @@ def extraer_noticias():
     return pd.DataFrame(datos_extraidos) if datos_extraidos else pd.DataFrame()
 
 # ==========================================
-# 🕵️‍♂️ PARTE 2: EL MOTOR DE CRUCE Y GUARDADO (OPTIMIZADO)
+# 🕵️‍♂️ PARTE 2: EL MOTOR DE CRUCE Y GUARDADO
 # ==========================================
 def limpiar_texto(texto):
     if pd.isna(texto): return ""
@@ -214,13 +216,11 @@ def buscar_coincidencia_rapida(df_contrapartes, nombre_noticia):
     palabras_noticia = limpiar_texto(nombre_noticia).split() 
     if len(palabras_noticia) < 2: return pd.DataFrame() 
 
-    # ⚡ Esta es la nueva lógica Turbo que lee la columna pre-separada
     def coincide(palabras_db):
         if len(palabras_db) < 2: return False
         corta, larga = (palabras_noticia, palabras_db) if len(palabras_noticia) <= len(palabras_db) else (palabras_db, palabras_noticia)
         return all(palabra in larga for palabra in corta)
 
-    # Solo aplicamos la máscara a la columna ya dividida
     mask = df_contrapartes['PALABRAS_LISTA'].apply(coincide)
     return df_contrapartes[mask]
 
@@ -228,7 +228,7 @@ def buscar_coincidencia_rapida(df_contrapartes, nombre_noticia):
 # 🚀 PARTE 3: EJECUCIÓN MAESTRA
 # ==========================================
 def ejecutar_pipeline():
-    columnas_finales = ['NROID', 'NIVEL DE ALERTA', 'CONTRAPARTE (BD)', 'ACUSADO (NOTICIA)', '% DE COINCIDENCIA', 'FECHA', 'DELITO', 'URL_NOTICIA']
+    columnas_finales = ['NROID', 'ID', 'RAPPIPAY ID', 'NIVEL DE ALERTA', 'CONTRAPARTE (BD)', 'ACUSADO (NOTICIA)', '% DE COINCIDENCIA', 'FECHA', 'DELITO', 'URL_NOTICIA']
     
     df_noticias = extraer_noticias()
     if df_noticias.empty:
@@ -239,28 +239,48 @@ def ejecutar_pipeline():
             print(f"\n❌ ERROR: ¡Tienes el archivo '{NOMBRE_EXCEL_SALIDA}' abierto! Ciérralo.")
         return
 
-    print(f"\nIntentando descargar Base de Contrapartes desde Google Drive...")
+    print(f"\nIntentando descargar Base de Contrapartes desde Google Drive (>25MB)...")
     archivo_temporal = "Contrapartes_Temp.parquet"
     
     try:
         session = requests.Session()
-        response = session.get(RUTA_BASE_NUBE, params={'confirm': 't'}, stream=True, verify=False)
+        URL = f"https://drive.google.com/uc?export=download&id={ID_DRIVE}"
         
+        # ⚡ 1. Primera petición inteligente
+        response = session.get(URL, stream=True, verify=False)
+        content_type = response.headers.get('Content-Type', '')
+        
+        # ⚡ 2. Detector de Páginas Web (Antivirus o Login bloqueado)
+        if 'text/html' in content_type:
+            texto_html = response.text
+            match = re.search(r'confirm=([a-zA-Z0-9_-]+)', texto_html)
+            
+            if match:
+                token = match.group(1)
+                print("Saltando advertencia de Antivirus de Google Drive...")
+                response = session.get(URL, params={'confirm': token}, stream=True, verify=False)
+            else:
+                print("\n❌ ERROR GRAVE: Google Drive no entregó la base de datos, entregó una página web.")
+                print("⚠️ Es CASI SEGURO que tu enlace está restringido a 'Solo empleados de la empresa'.")
+                print("⚠️ SOLUCIÓN: Ve a Drive -> Compartir -> Cambia a 'Cualquier persona con el enlace'.\n")
+                return
+        
+        # ⚡ 3. Descarga de datos reales
         if response.status_code == 200:
             with open(archivo_temporal, 'wb') as f:
                 for chunk in response.iter_content(chunk_size=32768):
                     if chunk:
                         f.write(chunk)
-            print("✅ Descarga completada.")
+            print("✅ Descarga completada correctamente.")
         else:
             print(f"❌ Error en la descarga. Código de estado: {response.status_code}")
             return
 
+        # ⚡ 4. Lector Turbo
         if os.path.exists(archivo_temporal):
             print("Leyendo y optimizando archivo Parquet para velocidad Turbo...")
             df_base = pd.read_parquet(archivo_temporal)
             df_base["NOMBRE"] = df_base["NOMBRE"].astype(str).apply(limpiar_texto)
-            # ⚡ Creamos la columna pre-dividida UNA SOLA VEZ para no sobrecargar el PC
             df_base["PALABRAS_LISTA"] = df_base["NOMBRE"].str.split()
         else:
             print("❌ El archivo no se encontró en el disco después de la descarga.")
@@ -291,6 +311,8 @@ def ejecutar_pipeline():
                 porcentaje_calc = f"{round(porcentaje_raw, 2)}%"
                 
                 nroid_extraido = coincidencia_row["NROID"] if "NROID" in coincidencia_row else "NO DISPONIBLE"
+                id_extraido = coincidencia_row["ID"] if "ID" in coincidencia_row else "NO DISPONIBLE"
+                rappipay_id_extraido = coincidencia_row["RAPPIPAY ID"] if "RAPPIPAY ID" in coincidencia_row else "NO DISPONIBLE"
 
                 if min_len >= 4:
                     nivel_alerta = "🔴 ALERTA CRÍTICA (4+ Palabras)"
@@ -303,6 +325,8 @@ def ejecutar_pipeline():
 
                 hallazgos_totales.append({
                     'NROID': nroid_extraido,
+                    'ID': id_extraido,                             
+                    'RAPPIPAY ID': rappipay_id_extraido,           
                     'NIVEL DE ALERTA': nivel_alerta,             
                     'CONTRAPARTE (BD)': coincidencia_row["NOMBRE"],
                     'ACUSADO (NOTICIA)': nombre_buscar,
