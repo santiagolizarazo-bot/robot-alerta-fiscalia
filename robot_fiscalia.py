@@ -26,8 +26,7 @@ DELITOS_LAFT = [
     "omision del agente retenedor", "fraude a subvenciones", "concusion", "cohecho",
     "celebracion de contratos", "acuerdos restrictivos", "trafico de influencias",
     "prevaricato", "abuso de autoridad", "usurpacion de funciones", "soborno transnacional",
-    "evasion tributaria", "defraudacion", "hidrocarburos", "captacion masiva", "droga",
-    "hurto calificado"
+    "evasion tributaria", "defraudacion", "hidrocarburos", "captacion masiva", "droga"
 ]
 
 # ==========================================
@@ -80,11 +79,9 @@ prohibidas = [
     "costa rica", "moneda", "falsa", "falso", "charco", "azul", "almendra", "madre", "padre",
     "pondaje", "hato", "corozal", "falsificacion", "billetes", "dolares", "pesos",
     "derechos", "humanos", "tribunal", "superior",
-    
-    # --- FILTROS ADICIONALES ---
     "movil", "turquia", "identificacion", "preliminar", "homologada", 
     "detencion", "domiciliaria", "callejon", "manhattan", "bugalagrande", 
-    "zarzal", "liberacion", "nacional", "la mesa", "mosquera"
+    "zarzal", "liberacion", "nacional", "la mesa"
 ]
 
 def analizar_noticia(txt):
@@ -95,67 +92,60 @@ def analizar_noticia(txt):
         return set(), ""
         
     dels_final = ", ".join(delitos_detectados)
+
     ents = []
-
-    # 1. Limpieza de Alias
     txt = re.sub(r"(?i)\balias\s+['\"‘“]?(?:[A-ZÁÉÍÓÚÑ0-9][^\s,.;:()]*|el|la|los|las|o|y|del?)(?:\s+(?:[A-ZÁÉÍÓÚÑ0-9][^\s,.;:()]*|el|la|los|las|o|y|del?)){0,4}['\"’”]?", " ", txt)
-
-    # 2. DETECTOR DE LISTAS DE NOMBRES (Mejora para leer listas como la de Medellín)
-    # Busca grupos de palabras que empiecen en mayúscula, aceptando conectores como "de"
-    patron_lista = r"\b([A-ZÁÉÍÓÚÑ][a-záéíóúñü]+(?:\s+(?:de\s+|la\s+|del\s+)? [A-ZÁÉÍÓÚÑ][a-záéíóúñü]+){1,3})\b"
-    for n in re.findall(patron_lista, txt):
-        ents.append(n.strip())
-
-    # 3. REGLA DE HERMANOS MEJORADA (Evita unir municipios)
-    patron_hermanos = r"\b([A-ZÁÉÍÓÚÑ][a-záéíóúñü]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñü]+)?)\s+[yeY]\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñü]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñü]+){1,3})\b"
+    
+    # 🕵️‍♂️ AJUSTE 1: HERMANOS REFORZADO (Para que no una Mosquera y La Mesa)
+    patron_hermanos = r"\b([A-ZÁÉÍÓÚÑ][a-záéíóúñüA-ZÁÉÍÓÚÑ]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñüA-ZÁÉÍÓÚÑ]+)?)\s+[yeY]\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñüA-ZÁÉÍÓÚÑ]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñüA-ZÁÉÍÓÚÑ]+){1,3})\b"
     for match in re.finditer(patron_hermanos, txt):
         h1, h2 = match.group(1), match.group(2)
         p2 = h2.split()
         if len(p2) >= 2: 
             ents.extend([f"{h1} {' '.join(p2[-2:])}", h2]) 
 
-    # 4. Spacy para reconocimiento de entidades
     for e in nlp(txt).ents:
         if e.label_ == "PER":
             n_crudo = re.sub(r"(?i)^(los\s+hermanos\s+|los\s+se[ñn]ores\s+|el\s+se[ñn]or\s+|la\s+se[ñn]ora\s+)", "", e.text.strip().replace("\n", " "))
             ents.append(n_crudo)
 
-    # 🛑 5. FILTROS DE CONTEXTO REFORZADOS (Para descartar lugares y víctimas)
-    triggers_victima = ["asesinato de", "homicidio de", "muerte de", "victima", "víctima", "golpeaban a", "intimidaban a", "pertenencias de", "claves de"]
-    triggers_lugar = ["barrio", "vereda", "municipio", "sector", "ciudad", "entre", "desde", "hacia", "en el", "en la"]
-    salvavidas = ["capturado", "judicializado", "aseguramiento", "imputó", "responsables", "procesado", "detención", "flagrancia"]
+    for n in re.findall(r"\b([A-ZÁÉÍÓÚÑ][a-záéíóúñü]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñü]+){1,3})\b", txt):
+        ents.append(re.sub(r"^(El|La|Los|Las|Un|Una|Del|Al|Por|Para|Con|En)\s+", "", n, flags=re.IGNORECASE).strip())
+
+    # 🕵️‍♂️ AJUSTE 2: TRIGGERS DE LUGAR AMPLIADOS (Incluye "entre", "desde")
+    triggers_victima = ["asesinato de", "asesinato del", "homicidio de", "homicidio del", "muerte de", "muerte del", "victima", "víctima", "cuerpo de", "cuerpo del", "atentado contra", "ataque contra", "abuso de", "abuso del", "secuestro de", "secuestro del", "magnicidio de", "magnicidio del", "senador", "precandidato", "candidato", "lider", "líder", "crimen contra"]
+    triggers_autoridad = ["director", "directora", "comandante", "general", "defensor", "defensora", "procurador", "procuradora", "asesor", "asesora", "alcalde", "alcaldesa", "gobernador", "gobernadora", "coronel", "ministro", "ministra", "gerente", "personero", "personera", "patrullero", "intendente", "vocero", "secretario", "secretaria", "jefe", "instituciones"]
+    triggers_lugar = ["barrio", "vereda", "corregimiento", "municipio", "sector", "ciudad", "departamento", "hospital", "clinica", "clínica", "carcel", "cárcel", "colegio", "escuela", "parque", "avenida", "calle", "carrera", "via", "vía", "estacion", "estación", "aeropuerto", "terminal", "finca", "hacienda", "edificio", "conjunto", "localidad", "centro comercial", "plaza", "puente", "universidad", "cementerio", "entre", "desde", "hacia"]
+    salvavidas = ["capturado", "capturada", "capturados", "condenado", "condenada", "condenados", "imputado", "imputada", "imputados", "procesado", "procesada", "procesados", "judicializado", "judicializada", "judicializados", "cárcel", "carcel", "prisión", "prision", "aseguramiento", "responsable", "extraditado", "extraditada", "extraditados", "presunto", "presunta", "presuntos", "presuntas", "investigado", "investigada", "investigados", "señalado", "señalada", "señalados"]
 
     ents_filtradas = []
     for n in ents:
-        n_cl = cl(n)
-        # Filtro de lista negra y longitud
-        if len(n_cl.split()) < 2 or any(re.search(rf"\b{x}\b", n_cl.lower()) for x in prohibidas):
-            continue
-            
         idx = txt.find(n)
         descartar = False
         if idx != -1:
-            ctx_antes = txt[max(0, idx-100):idx].lower()
-            
-            # Bloqueo por lugar (Ej: "Entre Mosquera y...")
-            if any(re.search(rf"\b{l}\b", ctx_antes) for l in triggers_lugar) and not any(s in ctx_antes for s in salvavidas):
-                descartar = True
-            
-            # Bloqueo por víctima
-            if any(v in ctx_antes for v in triggers_victima):
-                descartar = True
-        
-        if not descartar:
-            ents_filtradas.append(n_cl)
+            ctx_antes, ctx_despues = txt[max(0, idx-120):idx].lower(), txt[idx+len(n):idx+len(n)+120].lower()
+            ctx_total = ctx_antes + " " + ctx_despues
+            if any(t in ctx_antes for t in triggers_victima): descartar = True
+            if any(t in ctx_total.replace("fiscalía general", "").replace("fiscalia general", "") for t in triggers_autoridad) and not any(re.search(rf"\b{s}\b", ctx_total) for s in salvavidas): descartar = True
+            if any(re.search(rf"\b{lugar}\b\s*(de\s+|del\s+|la\s+|el\s+|los\s+|las\s+)?\s*$", txt[max(0, idx-40):idx].lower()) for lugar in triggers_lugar): descartar = True
+        if not descartar: ents_filtradas.append(n)
 
-    # Deduplicación inteligente
-    final_set = set()
-    sorted_ents = sorted(list(set(ents_filtradas)), key=len, reverse=True)
-    for nombre in sorted_ents:
-        if not any(nombre in otro for otro in final_set):
-            final_set.add(nombre)
+    pers_limpias = [cl(p) for p in ents_filtradas if not any(re.search(rf"\b{x}\b", cl(p).lower()) for x in prohibidas) and not any(char.isdigit() for char in cl(p)) and "." not in p and "," not in p and len(cl(p)) >= 5 and len(cl(p).split()) <= 4 and not re.search(r"\b[A-Z]\b", cl(p).replace(" Y ", " "))]
 
-    return final_set, dels_final
+    pers_finales = set()
+    for p1 in pers_limpias:
+        es_version_corta, es_frankenstein = False, False
+        palabras_p1 = set(p1.split())
+        for p2 in pers_limpias:
+            if p1 != p2 and palabras_p1.issubset(set(p2.split())): es_version_corta = True; break
+        if not es_version_corta and len(palabras_p1) >= 3:
+            palabras_en_otros = set()
+            for p2 in pers_limpias:
+                if p1 != p2 and not set(p2.split()).issubset(palabras_p1): palabras_en_otros.update(p2.split())
+            if palabras_p1.issubset(palabras_en_otros): es_frankenstein = True
+        if not es_version_corta and not es_frankenstein: pers_finales.add(p1)
+
+    return {p for p in pers_finales if len(p.split()) >= 2}, dels_final
 
 def extraer_noticias():
     hoy = datetime.now()
@@ -199,7 +189,7 @@ def extraer_noticias():
                     
                     if pers:
                         for p in pers: datos_extraidos.append({'FECHA': cl(fecha.strftime('%Y-%m-%d')), 'NOMBRE': cl(p), 'DELITO': dels, 'URL_NOTICIA': l})
-                        print(f" -> Extraído ({f_str}): {', '.join([cl(p) for p in pers])} | Delitos: {dels}")
+                        print(f" -> ¡FILTRO UIAF APROBADO! Extraído ({f_str}): {', '.join([cl(p) for p in pers])} | Delitos: {dels}")
                 except Exception: pass
             pag += 1
         except Exception as e: 
@@ -222,7 +212,6 @@ def buscar_coincidencia_rapida(df_contrapartes, nombre_noticia):
     def coincide_con_orden(palabras_db):
         if len(palabras_db) < 2: return False
         corta, larga = (palabras_noticia, palabras_db) if len(palabras_noticia) <= len(palabras_db) else (palabras_db, palabras_noticia)
-        # Verifica orden estricto de izquierda a derecha
         iterador_larga = iter(larga)
         return all(palabra in iterador_larga for palabra in corta)
 
@@ -237,78 +226,130 @@ def ejecutar_pipeline():
     
     df_noticias = extraer_noticias()
     if df_noticias.empty:
-        print("\n✅ Proceso Terminado. No se encontraron noticias hoy.")
+        print("\n✅ Proceso Terminado. No se encontraron noticias de delitos fuente LA/FT hoy.")
         try:
             pd.DataFrame(columns=columnas_finales).to_excel(NOMBRE_EXCEL_SALIDA, index=False)
-        except: pass
+        except PermissionError:
+            print(f"\n❌ ERROR: ¡Tienes el archivo '{NOMBRE_EXCEL_SALIDA}' abierto! Ciérralo.")
         return
 
-    print(f"\nIntentando descargar Base de Contrapartes...")
+    print(f"\nIntentando descargar Base de Contrapartes desde Google Drive (>25MB)...")
     archivo_temporal = "Contrapartes_Temp.parquet"
     
     try:
         session = requests.Session()
         URL = f"https://drive.google.com/uc?export=download&id={ID_DRIVE}"
-        response = session.get(URL, stream=True, verify=False)
         
-        # Saltador de aviso de virus de Google Drive
-        if 'text/html' in response.headers.get('Content-Type', ''):
-            match = re.search(r'confirm=([a-zA-Z0-9_-]+)', response.text)
+        response = session.get(URL, stream=True, verify=False)
+        content_type = response.headers.get('Content-Type', '')
+        
+        if 'text/html' in content_type:
+            texto_html = response.text
+            match = re.search(r'confirm=([a-zA-Z0-9_-]+)', texto_html)
+            
             if match:
-                response = session.get(URL, params={'confirm': match.group(1)}, stream=True, verify=False)
+                token = match.group(1)
+                print("Saltando advertencia de Antivirus de Google Drive...")
+                response = session.get(URL, params={'confirm': token}, stream=True, verify=False)
+            else:
+                print("\n❌ ERROR GRAVE: Google Drive entregó una página web, no el Parquet.")
+                print("⚠️ SOLUCIÓN: Cambia los permisos del archivo a 'Cualquier persona con el enlace'.\n")
+                return
         
         if response.status_code == 200:
             with open(archivo_temporal, 'wb') as f:
                 for chunk in response.iter_content(chunk_size=32768):
-                    if chunk: f.write(chunk)
-            
+                    if chunk:
+                        f.write(chunk)
+            print("✅ Descarga completada correctamente.")
+        else:
+            print(f"❌ Error en la descarga. Código de estado: {response.status_code}")
+            return
+
+        if os.path.exists(archivo_temporal):
+            print("Leyendo y optimizando archivo Parquet para velocidad Turbo...")
             df_base = pd.read_parquet(archivo_temporal)
             df_base["NOMBRE"] = df_base["NOMBRE"].astype(str).apply(limpiar_texto)
             df_base["PALABRAS_LISTA"] = df_base["NOMBRE"].str.split()
-        else: return
+        else:
+            print("❌ El archivo no se encontró en el disco después de la descarga.")
+            return
 
     except Exception as e:
-        print(f"❌ Error crítico: {e}")
+        print(f"❌ Error crítico en el proceso de descarga/lectura: {e}")
         return
 
     hallazgos_totales = []
-    print(f"\nIniciando cruce estricto de {len(df_noticias)} nombres...")
+    print(f"\nIniciando cruce estricto de {len(df_noticias)} nombres extraídos...")
     
     for index, row in df_noticias.iterrows():
         nombre_buscar = str(row["NOMBRE"]).strip()
+        print(f"Buscando: {nombre_buscar}...")
         coincidencias = buscar_coincidencia_rapida(df_base, nombre_buscar)
         
         if not coincidencias.empty:
-            for _, c_row in coincidencias.iterrows():
+            print(f"  [!] ALERTA ROJA: {len(coincidencias)} posibles contrapartes encontradas.")
+            for _, coincidencia_row in coincidencias.iterrows():
+                
                 palabras_n = nombre_buscar.split()
-                palabras_c = c_row["PALABRAS_LISTA"]
+                palabras_c = coincidencia_row["PALABRAS_LISTA"]
                 max_len = max(len(palabras_n), len(palabras_c))
                 min_len = min(len(palabras_n), len(palabras_c))
                 
-                porcentaje_raw = (min_len / max_len) * 100
+                porcentaje_raw = (min_len / max_len) * 100 if max_len > 0 else 0
+                porcentaje_calc = f"{round(porcentaje_raw, 2)}%"
                 
+                documento_extraido = coincidencia_row["DOCUMENTO"] if "DOCUMENTO" in coincidencia_row else "NO DISPONIBLE"
+                pay_id_extraido = coincidencia_row["PAY_ID"] if "PAY_ID" in coincidencia_row else "NO DISPONIBLE"
+
+                if min_len >= 4:
+                    nivel_alerta = "🔴 ALERTA CRÍTICA (4+ Palabras)"
+                elif min_len == 3:
+                    nivel_alerta = "🟠 ALERTA MEDIA (3 Palabras)"
+                elif min_len == 2:
+                    nivel_alerta = "🟡 ALERTA BAJA (2 Palabras)"
+                else:
+                    nivel_alerta = "⚪ DESCARTADO (1 Palabra)"
+
                 hallazgos_totales.append({
-                    'DOCUMENTO': c_row.get("DOCUMENTO", "NO DISPONIBLE"),
-                    'PAY_ID': c_row.get("PAY_ID", "NO DISPONIBLE"),
-                    'NIVEL DE ALERTA': f"ALERTA ({min_len} Palabras)",             
-                    'CONTRAPARTE (BD)': c_row["NOMBRE"],
+                    'DOCUMENTO': documento_extraido,           
+                    'PAY_ID': pay_id_extraido,                 
+                    'NIVEL DE ALERTA': nivel_alerta,             
+                    'CONTRAPARTE (BD)': coincidencia_row["NOMBRE"],
                     'ACUSADO (NOTICIA)': nombre_buscar,
-                    '% DE COINCIDENCIA': f"{round(porcentaje_raw, 2)}%",
+                    '% DE COINCIDENCIA': porcentaje_calc,
                     'FECHA': row.get("FECHA", ""),
                     'DELITO': row.get("DELITO", ""),
                     'URL_NOTICIA': row.get("URL_NOTICIA", ""),
-                    '_sort': porcentaje_raw
+                    '_sort_pct': porcentaje_raw,                 
+                    '_sort_key': min_len                         
                 })
 
     if hallazgos_totales:
-        df_final = pd.DataFrame(hallazgos_totales).sort_values(by='_sort', ascending=False).drop(columns='_sort')
-        df_final.to_excel(NOMBRE_EXCEL_SALIDA, index=False)
-        print(f"\n✅ Terminado. Se encontraron {len(hallazgos_totales)} alertas.")
+        df_final = pd.DataFrame(hallazgos_totales)
+        df_final = df_final.sort_values(by=['_sort_pct', '_sort_key'], ascending=[False, False])
+        df_final = df_final.drop(columns=['_sort_key', '_sort_pct'])
+        df_final = df_final[columnas_finales]
+        
+        try:
+            df_final.to_excel(NOMBRE_EXCEL_SALIDA, index=False)
+            print(f"\n[OK] Cruce terminado. Se encontraron {len(hallazgos_totales)} alertas.")
+            print(f"✅ Archivo guardado localmente como: {NOMBRE_EXCEL_SALIDA}")
+        except PermissionError:
+            print(f"\n❌ ERROR: ¡Tienes el archivo '{NOMBRE_EXCEL_SALIDA}' abierto! Ciérralo.")
     else:
-        pd.DataFrame(columns=columnas_finales).to_excel(NOMBRE_EXCEL_SALIDA, index=False)
-        print("\n✅ Terminado. Sin hallazgos.")
+        try:
+            pd.DataFrame(columns=columnas_finales).to_excel(NOMBRE_EXCEL_SALIDA, index=False)
+            print("\n[OK] Cruce terminado. Excelente, ninguna contraparte apareció en las noticias.")
+            print(f"✅ Archivo vacío guardado localmente como: {NOMBRE_EXCEL_SALIDA}")
+        except PermissionError:
+            print(f"\n❌ ERROR: ¡Tienes el archivo '{NOMBRE_EXCEL_SALIDA}' abierto! Ciérralo.")
             
-    if os.path.exists(archivo_temporal): os.remove(archivo_temporal)
+    if os.path.exists(archivo_temporal):
+        try:
+            os.remove(archivo_temporal)
+        except:
+            pass
 
 if __name__ == "__main__":
     ejecutar_pipeline()
