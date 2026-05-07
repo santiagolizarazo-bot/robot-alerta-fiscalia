@@ -79,8 +79,6 @@ prohibidas = [
     "costa rica", "moneda", "falsa", "falso", "charco", "azul", "almendra", "madre", "padre",
     "pondaje", "hato", "corozal", "falsificacion", "billetes", "dolares", "pesos",
     "derechos", "humanos", "tribunal", "superior",
-    
-    # --- NUEVOS FILTROS MAYO 2026 ---
     "movil", "turquia", "identificacion", "preliminar", "homologada", 
     "detencion", "domiciliaria", "callejon", "manhattan", "bugalagrande", 
     "zarzal", "liberacion", "nacional", "la mesa"
@@ -228,7 +226,8 @@ def buscar_coincidencia_rapida(df_contrapartes, nombre_noticia):
 # 🚀 PARTE 3: EJECUCIÓN MAESTRA
 # ==========================================
 def ejecutar_pipeline():
-    columnas_finales = ['NROID', 'ID', 'RAPPIPAY ID', 'NIVEL DE ALERTA', 'CONTRAPARTE (BD)', 'ACUSADO (NOTICIA)', '% DE COINCIDENCIA', 'FECHA', 'DELITO', 'URL_NOTICIA']
+    # 👇 Se ajustaron los nombres de las columnas para el Excel Final
+    columnas_finales = ['DOCUMENTO', 'PAY_ID', 'NIVEL DE ALERTA', 'CONTRAPARTE (BD)', 'ACUSADO (NOTICIA)', '% DE COINCIDENCIA', 'FECHA', 'DELITO', 'URL_NOTICIA']
     
     df_noticias = extraer_noticias()
     if df_noticias.empty:
@@ -246,11 +245,9 @@ def ejecutar_pipeline():
         session = requests.Session()
         URL = f"https://drive.google.com/uc?export=download&id={ID_DRIVE}"
         
-        # ⚡ 1. Primera petición inteligente
         response = session.get(URL, stream=True, verify=False)
         content_type = response.headers.get('Content-Type', '')
         
-        # ⚡ 2. Detector de Páginas Web (Antivirus o Login bloqueado)
         if 'text/html' in content_type:
             texto_html = response.text
             match = re.search(r'confirm=([a-zA-Z0-9_-]+)', texto_html)
@@ -260,12 +257,10 @@ def ejecutar_pipeline():
                 print("Saltando advertencia de Antivirus de Google Drive...")
                 response = session.get(URL, params={'confirm': token}, stream=True, verify=False)
             else:
-                print("\n❌ ERROR GRAVE: Google Drive no entregó la base de datos, entregó una página web.")
-                print("⚠️ Es CASI SEGURO que tu enlace está restringido a 'Solo empleados de la empresa'.")
-                print("⚠️ SOLUCIÓN: Ve a Drive -> Compartir -> Cambia a 'Cualquier persona con el enlace'.\n")
+                print("\n❌ ERROR GRAVE: Google Drive entregó una página web, no el Parquet.")
+                print("⚠️ SOLUCIÓN: Cambia los permisos del archivo a 'Cualquier persona con el enlace'.\n")
                 return
         
-        # ⚡ 3. Descarga de datos reales
         if response.status_code == 200:
             with open(archivo_temporal, 'wb') as f:
                 for chunk in response.iter_content(chunk_size=32768):
@@ -276,7 +271,6 @@ def ejecutar_pipeline():
             print(f"❌ Error en la descarga. Código de estado: {response.status_code}")
             return
 
-        # ⚡ 4. Lector Turbo
         if os.path.exists(archivo_temporal):
             print("Leyendo y optimizando archivo Parquet para velocidad Turbo...")
             df_base = pd.read_parquet(archivo_temporal)
@@ -310,9 +304,9 @@ def ejecutar_pipeline():
                 porcentaje_raw = (min_len / max_len) * 100 if max_len > 0 else 0
                 porcentaje_calc = f"{round(porcentaje_raw, 2)}%"
                 
-                nroid_extraido = coincidencia_row["NROID"] if "NROID" in coincidencia_row else "NO DISPONIBLE"
-                id_extraido = coincidencia_row["ID"] if "ID" in coincidencia_row else "NO DISPONIBLE"
-                rappipay_id_extraido = coincidencia_row["RAPPIPAY ID"] if "RAPPIPAY ID" in coincidencia_row else "NO DISPONIBLE"
+                # 👇 AQUÍ ESTÁ LA MAGIA FINAL: LOS NOMBRES EXACTOS DE TU BASE DE DATOS 👇
+                documento_extraido = coincidencia_row["DOCUMENTO"] if "DOCUMENTO" in coincidencia_row else "NO DISPONIBLE"
+                pay_id_extraido = coincidencia_row["PAY_ID"] if "PAY_ID" in coincidencia_row else "NO DISPONIBLE"
 
                 if min_len >= 4:
                     nivel_alerta = "🔴 ALERTA CRÍTICA (4+ Palabras)"
@@ -324,9 +318,8 @@ def ejecutar_pipeline():
                     nivel_alerta = "⚪ DESCARTADO (1 Palabra)"
 
                 hallazgos_totales.append({
-                    'NROID': nroid_extraido,
-                    'ID': id_extraido,                             
-                    'RAPPIPAY ID': rappipay_id_extraido,           
+                    'DOCUMENTO': documento_extraido,           # <-- Columna ajustada
+                    'PAY_ID': pay_id_extraido,                 # <-- Columna ajustada
                     'NIVEL DE ALERTA': nivel_alerta,             
                     'CONTRAPARTE (BD)': coincidencia_row["NOMBRE"],
                     'ACUSADO (NOTICIA)': nombre_buscar,
