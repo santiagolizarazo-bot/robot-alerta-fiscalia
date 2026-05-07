@@ -94,12 +94,20 @@ def analizar_noticia(txt):
     dels_final = ", ".join(delitos_detectados)
 
     ents = []
+    # Limpiamos alias
     txt = re.sub(r"(?i)\balias\s+['\"‘“]?(?:[A-ZÁÉÍÓÚÑ0-9][^\s,.;:()]*|el|la|los|las|o|y|del?)(?:\s+(?:[A-ZÁÉÍÓÚÑ0-9][^\s,.;:()]*|el|la|los|las|o|y|del?)){0,4}['\"’”]?", " ", txt)
     
-    # 🕵️‍♂️ AJUSTE 1: HERMANOS REFORZADO (Para que no una Mosquera y La Mesa)
-    patron_hermanos = r"\b([A-ZÁÉÍÓÚÑ][a-záéíóúñüA-ZÁÉÍÓÚÑ]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñüA-ZÁÉÍÓÚÑ]+)?)\s+[yeY]\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñüA-ZÁÉÍÓÚÑ]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñüA-ZÁÉÍÓÚÑ]+){1,3})\b"
+    # 🕵️‍♂️ MEJORA 1: Patrón de nombres más robusto para listas (Medellín) y apellidos compuestos (De Arco)
+    patron_nombres = r"\b([A-ZÁÉÍÓÚÑ][a-záéíóúñü]+(?:\s+(?:de\s+|del\s+|la\s+)?[A-ZÁÉÍÓÚÑ][a-záéíóúñü]+){1,3})\b"
+    for n in re.findall(patron_nombres, txt):
+        # Limpiamos si capturó un artículo al inicio
+        ents.append(re.sub(r"^(El|La|Los|Las|Un|Una|Del|Al|Por|Para|Con|En)\s+", "", n.strip(), flags=re.IGNORECASE))
+    
+    # 🕵️‍♂️ MEJORA 2: Hermanos reforzado (No une municipios que empiecen por El/La)
+    patron_hermanos = r"\b([A-ZÁÉÍÓÚÑ][a-záéíóúñü]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñü]+)?)\s+[yeY]\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñü]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñü]+){1,3})\b"
     for match in re.finditer(patron_hermanos, txt):
         h1, h2 = match.group(1), match.group(2)
+        if any(h2.startswith(art) for art in ["La ", "El ", "Los ", "Las "]): continue # Salta lugares como "La Mesa"
         p2 = h2.split()
         if len(p2) >= 2: 
             ents.extend([f"{h1} {' '.join(p2[-2:])}", h2]) 
@@ -109,41 +117,37 @@ def analizar_noticia(txt):
             n_crudo = re.sub(r"(?i)^(los\s+hermanos\s+|los\s+se[ñn]ores\s+|el\s+se[ñn]or\s+|la\s+se[ñn]ora\s+)", "", e.text.strip().replace("\n", " "))
             ents.append(n_crudo)
 
-    for n in re.findall(r"\b([A-ZÁÉÍÓÚÑ][a-záéíóúñü]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñü]+){1,3})\b", txt):
-        ents.append(re.sub(r"^(El|La|Los|Las|Un|Una|Del|Al|Por|Para|Con|En)\s+", "", n, flags=re.IGNORECASE).strip())
-
-    # 🕵️‍♂️ AJUSTE 2: TRIGGERS DE LUGAR AMPLIADOS (Incluye "entre", "desde")
-    triggers_victima = ["asesinato de", "asesinato del", "homicidio de", "homicidio del", "muerte de", "muerte del", "victima", "víctima", "cuerpo de", "cuerpo del", "atentado contra", "ataque contra", "abuso de", "abuso del", "secuestro de", "secuestro del", "magnicidio de", "magnicidio del", "senador", "precandidato", "candidato", "lider", "líder", "crimen contra"]
-    triggers_autoridad = ["director", "directora", "comandante", "general", "defensor", "defensora", "procurador", "procuradora", "asesor", "asesora", "alcalde", "alcaldesa", "gobernador", "gobernadora", "coronel", "ministro", "ministra", "gerente", "personero", "personera", "patrullero", "intendente", "vocero", "secretario", "secretaria", "jefe", "instituciones"]
-    triggers_lugar = ["barrio", "vereda", "corregimiento", "municipio", "sector", "ciudad", "departamento", "hospital", "clinica", "clínica", "carcel", "cárcel", "colegio", "escuela", "parque", "avenida", "calle", "carrera", "via", "vía", "estacion", "estación", "aeropuerto", "terminal", "finca", "hacienda", "edificio", "conjunto", "localidad", "centro comercial", "plaza", "puente", "universidad", "cementerio", "entre", "desde", "hacia"]
-    salvavidas = ["capturado", "capturada", "capturados", "condenado", "condenada", "condenados", "imputado", "imputada", "imputados", "procesado", "procesada", "procesados", "judicializado", "judicializada", "judicializados", "cárcel", "carcel", "prisión", "prision", "aseguramiento", "responsable", "extraditado", "extraditada", "extraditados", "presunto", "presunta", "presuntos", "presuntas", "investigado", "investigada", "investigados", "señalado", "señalada", "señalados"]
+    # 🕵️‍♂️ MEJORA 3: Diccionarios de contexto inteligentes
+    triggers_victima = ["asesinato de", "homicidio de", "muerte de", "victima", "víctima", "golpeaban a", "intimidaban a", "claves de"]
+    triggers_lugar = ["barrio", "vereda", "municipio", "sector", "ciudad", "departamento", "entre", "desde", "hacia", "vía", "via"]
+    salvavidas = ["capturado", "judicializado", "aseguramiento", "imputado", "procesado", "detención", "responsable"]
 
     ents_filtradas = []
     for n in ents:
         idx = txt.find(n)
         descartar = False
         if idx != -1:
-            ctx_antes, ctx_despues = txt[max(0, idx-120):idx].lower(), txt[idx+len(n):idx+len(n)+120].lower()
-            ctx_total = ctx_antes + " " + ctx_despues
+            ctx_antes = txt[max(0, idx-100):idx].lower()
+            ctx_total = txt[max(0, idx-100):idx+len(n)+100].lower()
+            
+            # Filtro por víctima
             if any(t in ctx_antes for t in triggers_victima): descartar = True
-            if any(t in ctx_total.replace("fiscalía general", "").replace("fiscalia general", "") for t in triggers_autoridad) and not any(re.search(rf"\b{s}\b", ctx_total) for s in salvavidas): descartar = True
-            if any(re.search(rf"\b{lugar}\b\s*(de\s+|del\s+|la\s+|el\s+|los\s+|las\s+)?\s*$", txt[max(0, idx-40):idx].lower()) for lugar in triggers_lugar): descartar = True
+            
+            # Filtro por lugar (Solo descarta si NO hay un salvavidas de captura cerca)
+            if any(re.search(rf"\b{lugar}\b", ctx_antes) for lugar in triggers_lugar):
+                if not any(s in ctx_total for s in salvavidas):
+                    descartar = True
+                    
         if not descartar: ents_filtradas.append(n)
 
     pers_limpias = [cl(p) for p in ents_filtradas if not any(re.search(rf"\b{x}\b", cl(p).lower()) for x in prohibidas) and not any(char.isdigit() for char in cl(p)) and "." not in p and "," not in p and len(cl(p)) >= 5 and len(cl(p).split()) <= 4 and not re.search(r"\b[A-Z]\b", cl(p).replace(" Y ", " "))]
 
+    # Deduplicación (Si tenemos Juan Perez y Juan Perez Rodriguez, deja el largo)
     pers_finales = set()
-    for p1 in pers_limpias:
-        es_version_corta, es_frankenstein = False, False
-        palabras_p1 = set(p1.split())
-        for p2 in pers_limpias:
-            if p1 != p2 and palabras_p1.issubset(set(p2.split())): es_version_corta = True; break
-        if not es_version_corta and len(palabras_p1) >= 3:
-            palabras_en_otros = set()
-            for p2 in pers_limpias:
-                if p1 != p2 and not set(p2.split()).issubset(palabras_p1): palabras_en_otros.update(p2.split())
-            if palabras_p1.issubset(palabras_en_otros): es_frankenstein = True
-        if not es_version_corta and not es_frankenstein: pers_finales.add(p1)
+    sorted_pers = sorted(list(set(pers_limpias)), key=len, reverse=True)
+    for p in sorted_pers:
+        if not any(p in otro for otro in pers_finales):
+            pers_finales.add(p)
 
     return {p for p in pers_finales if len(p.split()) >= 2}, dels_final
 
