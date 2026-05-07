@@ -79,8 +79,6 @@ prohibidas = [
     "costa rica", "moneda", "falsa", "falso", "charco", "azul", "almendra", "madre", "padre",
     "pondaje", "hato", "corozal", "falsificacion", "billetes", "dolares", "pesos",
     "derechos", "humanos", "tribunal", "superior",
-    
-    # --- FILTROS ADICIONALES (MAY 2026) ---
     "movil", "turquia", "identificacion", "preliminar", "homologada", 
     "detencion", "domiciliaria", "callejon", "manhattan", "bugalagrande", 
     "zarzal", "liberacion", "nacional", "la mesa"
@@ -98,19 +96,13 @@ def analizar_noticia(txt):
     ents = []
     txt = re.sub(r"(?i)\balias\s+['\"‘“]?(?:[A-ZÁÉÍÓÚÑ0-9][^\s,.;:()]*|el|la|los|las|o|y|del?)(?:\s+(?:[A-ZÁÉÍÓÚÑ0-9][^\s,.;:()]*|el|la|los|las|o|y|del?)){0,4}['\"’”]?", " ", txt)
     
+    # 🕵️‍♂️ AJUSTE 1: HERMANOS REFORZADO (Para que no una Mosquera y La Mesa)
     patron_hermanos = r"\b([A-ZÁÉÍÓÚÑ][a-záéíóúñüA-ZÁÉÍÓÚÑ]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñüA-ZÁÉÍÓÚÑ]+)?)\s+[yeY]\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñüA-ZÁÉÍÓÚÑ]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñüA-ZÁÉÍÓÚÑ]+){1,3})\b"
     for match in re.finditer(patron_hermanos, txt):
         h1, h2 = match.group(1), match.group(2)
-        start_idx = match.start()
-        if start_idx > 0:
-            text_before = txt[:start_idx].strip()
-            if text_before:
-                last_word_before = text_before.split()[-1]
-                if last_word_before and last_word_before[0].isupper() and last_word_before.lower() not in ["el", "la", "los", "las", "un", "una", "del", "al"]:
-                    continue 
         p2 = h2.split()
-        if len(p2) >= 3: ents.extend([f"{h1} {' '.join(p2[-2:])}", h2]) 
-        elif len(p2) == 2: ents.extend([f"{h1} {p2[-1]}", h2]) 
+        if len(p2) >= 2: 
+            ents.extend([f"{h1} {' '.join(p2[-2:])}", h2]) 
 
     for e in nlp(txt).ents:
         if e.label_ == "PER":
@@ -120,9 +112,10 @@ def analizar_noticia(txt):
     for n in re.findall(r"\b([A-ZÁÉÍÓÚÑ][a-záéíóúñü]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñü]+){1,3})\b", txt):
         ents.append(re.sub(r"^(El|La|Los|Las|Un|Una|Del|Al|Por|Para|Con|En)\s+", "", n, flags=re.IGNORECASE).strip())
 
+    # 🕵️‍♂️ AJUSTE 2: TRIGGERS DE LUGAR AMPLIADOS (Incluye "entre", "desde")
     triggers_victima = ["asesinato de", "asesinato del", "homicidio de", "homicidio del", "muerte de", "muerte del", "victima", "víctima", "cuerpo de", "cuerpo del", "atentado contra", "ataque contra", "abuso de", "abuso del", "secuestro de", "secuestro del", "magnicidio de", "magnicidio del", "senador", "precandidato", "candidato", "lider", "líder", "crimen contra"]
     triggers_autoridad = ["director", "directora", "comandante", "general", "defensor", "defensora", "procurador", "procuradora", "asesor", "asesora", "alcalde", "alcaldesa", "gobernador", "gobernadora", "coronel", "ministro", "ministra", "gerente", "personero", "personera", "patrullero", "intendente", "vocero", "secretario", "secretaria", "jefe", "instituciones"]
-    triggers_lugar = ["barrio", "vereda", "corregimiento", "municipio", "sector", "ciudad", "departamento", "hospital", "clinica", "clínica", "carcel", "cárcel", "colegio", "escuela", "parque", "avenida", "calle", "carrera", "via", "vía", "estacion", "estación", "aeropuerto", "terminal", "finca", "hacienda", "edificio", "conjunto", "localidad", "centro comercial", "plaza", "puente", "universidad", "cementerio"]
+    triggers_lugar = ["barrio", "vereda", "corregimiento", "municipio", "sector", "ciudad", "departamento", "hospital", "clinica", "clínica", "carcel", "cárcel", "colegio", "escuela", "parque", "avenida", "calle", "carrera", "via", "vía", "estacion", "estación", "aeropuerto", "terminal", "finca", "hacienda", "edificio", "conjunto", "localidad", "centro comercial", "plaza", "puente", "universidad", "cementerio", "entre", "desde", "hacia"]
     salvavidas = ["capturado", "capturada", "capturados", "condenado", "condenada", "condenados", "imputado", "imputada", "imputados", "procesado", "procesada", "procesados", "judicializado", "judicializada", "judicializados", "cárcel", "carcel", "prisión", "prision", "aseguramiento", "responsable", "extraditado", "extraditada", "extraditados", "presunto", "presunta", "presuntos", "presuntas", "investigado", "investigada", "investigados", "señalado", "señalada", "señalados"]
 
     ents_filtradas = []
@@ -218,11 +211,7 @@ def buscar_coincidencia_rapida(df_contrapartes, nombre_noticia):
 
     def coincide_con_orden(palabras_db):
         if len(palabras_db) < 2: return False
-        
-        # Identificamos cuál es el nombre corto y cuál el largo
         corta, larga = (palabras_noticia, palabras_db) if len(palabras_noticia) <= len(palabras_db) else (palabras_db, palabras_noticia)
-        
-        # El iterador exige que las palabras aparezcan en el mismo orden de izquierda a derecha
         iterador_larga = iter(larga)
         return all(palabra in iterador_larga for palabra in corta)
 
