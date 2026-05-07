@@ -79,6 +79,8 @@ prohibidas = [
     "costa rica", "moneda", "falsa", "falso", "charco", "azul", "almendra", "madre", "padre",
     "pondaje", "hato", "corozal", "falsificacion", "billetes", "dolares", "pesos",
     "derechos", "humanos", "tribunal", "superior",
+    
+    # --- FILTROS ADICIONALES (MAY 2026) ---
     "movil", "turquia", "identificacion", "preliminar", "homologada", 
     "detencion", "domiciliaria", "callejon", "manhattan", "bugalagrande", 
     "zarzal", "liberacion", "nacional", "la mesa"
@@ -203,7 +205,7 @@ def extraer_noticias():
     return pd.DataFrame(datos_extraidos) if datos_extraidos else pd.DataFrame()
 
 # ==========================================
-# 🕵️‍♂️ PARTE 2: EL MOTOR DE CRUCE Y GUARDADO
+# 🕵️‍♂️ PARTE 2: EL MOTOR DE CRUCE ESTRICTO
 # ==========================================
 def limpiar_texto(texto):
     if pd.isna(texto): return ""
@@ -214,19 +216,23 @@ def buscar_coincidencia_rapida(df_contrapartes, nombre_noticia):
     palabras_noticia = limpiar_texto(nombre_noticia).split() 
     if len(palabras_noticia) < 2: return pd.DataFrame() 
 
-    def coincide(palabras_db):
+    def coincide_con_orden(palabras_db):
         if len(palabras_db) < 2: return False
+        
+        # Identificamos cuál es el nombre corto y cuál el largo
         corta, larga = (palabras_noticia, palabras_db) if len(palabras_noticia) <= len(palabras_db) else (palabras_db, palabras_noticia)
-        return all(palabra in larga for palabra in corta)
+        
+        # El iterador exige que las palabras aparezcan en el mismo orden de izquierda a derecha
+        iterador_larga = iter(larga)
+        return all(palabra in iterador_larga for palabra in corta)
 
-    mask = df_contrapartes['PALABRAS_LISTA'].apply(coincide)
+    mask = df_contrapartes['PALABRAS_LISTA'].apply(coincide_con_orden)
     return df_contrapartes[mask]
 
 # ==========================================
 # 🚀 PARTE 3: EJECUCIÓN MAESTRA
 # ==========================================
 def ejecutar_pipeline():
-    # 👇 Se ajustaron los nombres de las columnas para el Excel Final
     columnas_finales = ['DOCUMENTO', 'PAY_ID', 'NIVEL DE ALERTA', 'CONTRAPARTE (BD)', 'ACUSADO (NOTICIA)', '% DE COINCIDENCIA', 'FECHA', 'DELITO', 'URL_NOTICIA']
     
     df_noticias = extraer_noticias()
@@ -285,7 +291,7 @@ def ejecutar_pipeline():
         return
 
     hallazgos_totales = []
-    print(f"\nIniciando cruce ultra-rápido de {len(df_noticias)} nombres extraídos...")
+    print(f"\nIniciando cruce estricto de {len(df_noticias)} nombres extraídos...")
     
     for index, row in df_noticias.iterrows():
         nombre_buscar = str(row["NOMBRE"]).strip()
@@ -304,7 +310,6 @@ def ejecutar_pipeline():
                 porcentaje_raw = (min_len / max_len) * 100 if max_len > 0 else 0
                 porcentaje_calc = f"{round(porcentaje_raw, 2)}%"
                 
-                # 👇 AQUÍ ESTÁ LA MAGIA FINAL: LOS NOMBRES EXACTOS DE TU BASE DE DATOS 👇
                 documento_extraido = coincidencia_row["DOCUMENTO"] if "DOCUMENTO" in coincidencia_row else "NO DISPONIBLE"
                 pay_id_extraido = coincidencia_row["PAY_ID"] if "PAY_ID" in coincidencia_row else "NO DISPONIBLE"
 
@@ -318,8 +323,8 @@ def ejecutar_pipeline():
                     nivel_alerta = "⚪ DESCARTADO (1 Palabra)"
 
                 hallazgos_totales.append({
-                    'DOCUMENTO': documento_extraido,           # <-- Columna ajustada
-                    'PAY_ID': pay_id_extraido,                 # <-- Columna ajustada
+                    'DOCUMENTO': documento_extraido,           
+                    'PAY_ID': pay_id_extraido,                 
                     'NIVEL DE ALERTA': nivel_alerta,             
                     'CONTRAPARTE (BD)': coincidencia_row["NOMBRE"],
                     'ACUSADO (NOTICIA)': nombre_buscar,
